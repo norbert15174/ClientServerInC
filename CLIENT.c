@@ -17,10 +17,11 @@
 #include <fcntl.h>
 #include <pthread.h>
 
+#define MAXLINE 1024
+
 // TCP
 #define servAddr "192.168.56.25"
 // MULTICAST
-#define MAXLINE 1024
 #define SA struct sockaddr
 
 #define INTERFACE "eth1"
@@ -36,10 +37,10 @@ void *doRecieving(void *sockID)
     while (1)
     {
 
-        char data[1024];
-        int read = recv(clientSocket, data, 1024, 0);
+        char data[MAXLINE];
+        int read = recv(clientSocket, data, MAXLINE, 0);
         data[read] = '\0';
-        printf("%s\n", data);
+        printf("%s", data);
     }
 }
 
@@ -117,22 +118,16 @@ int mcast_join(int sockfd, const SA *grp, socklen_t grplen,
 }
 
 void recv_all(int, socklen_t);
-void send_all(int, SA *, socklen_t);
+void send_all(int, SA *, socklen_t, char name[MAXLINE]);
 
-void send_all(int sendfd, SA *sadest, socklen_t salen)
+void send_all(int sendfd, SA *sadest, socklen_t salen, char name[MAXLINE])
 {
     char line[MAXLINE];
     char text[MAXLINE];
-    int a;
     for (;;)
     {
-        a = scanf("%[^\n]%*c", text);
-        if ( a == 0)  // gdy brak tekstu     
-        {
-            getchar();
-            continue;
-        }
-        snprintf(line, sizeof(line), "%s", text);
+        scanf("%[^\n]%*c", text);
+        snprintf(line, sizeof(line), "%s: %s", name, text);
         if (sendto(sendfd, line, strlen(line), 0, sadest, salen) < 0)
             fprintf(stderr, "sendto() error : %s\n", strerror(errno));
     }
@@ -144,7 +139,6 @@ void recv_all(int recvfd, socklen_t salen)
     char line[MAXLINE + 1];
     socklen_t len;
     struct sockaddr *safrom;
-    char str[128];
     struct sockaddr_in *cliaddrv4;
     char addr_str[INET_ADDRSTRLEN + 1];
 
@@ -170,9 +164,8 @@ int main()
     while (1)
     {
         printf("Make a choice...\nPRIVATE or GROUP chat\n");
-        char CHOICE[50];
+        char CHOICE[MAXLINE];
         scanf("%s", CHOICE);
-        getchar();
         if (strcmp(CHOICE, "PRIVATE") == 0)
         {
 
@@ -187,56 +180,52 @@ int main()
 
             if (connect(clientSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) == -1)
                 return 0;
-
-            printf("Connection established ............\n");
-
             pthread_t thread;
             pthread_create(&thread, NULL, doRecieving, (void *)&clientSocket);
-            char userName[1024] = "NAME"; // nazwa użytkownika
-            send(clientSocket, userName, 1024, 0);
+            char userName[MAXLINE] = "NAME"; // nazwa użytkownika
+            send(clientSocket, userName, MAXLINE, 0);
             printf("Give me your name!!!\n");
             scanf("%s", userName);
             sprintf(userName, "%s", userName);
-            send(clientSocket, userName, 1024, 0);
+            send(clientSocket, userName, MAXLINE, 0);
 
             while (1)
             {
 
-                char input[1024];
+                char input[MAXLINE];
                 scanf("%s", input);
 
                 if (strcmp(input, "LIST") == 0)
                 {
 
-                    send(clientSocket, input, 1024, 0);
+                    send(clientSocket, input, MAXLINE, 0);
                 }
                 if (strcmp(input, "CONNECT") == 0)
                 {
 
-                    send(clientSocket, input, 1024, 0);
+                    send(clientSocket, input, MAXLINE, 0);
 
                     scanf("%s", input);
-                    send(clientSocket, input, 1024, 0);
+                    send(clientSocket, input, MAXLINE, 0);
                 }
                 if (strcmp(input, "SEND") == 0)
                 {
+                    getchar();
                     while (1)
                     {
-                        char message[1024];
-                        send(clientSocket, input, 1024, 0);
-                        printf("%s: ", userName);
-                        scanf("\n%s", message);
-                        send(clientSocket, message, 1024, 0);
+                        char message[MAXLINE];
+                        fgets(message, MAXLINE, stdin);
+                        if (strcmp(message, "EXIT\n") == 0) break;
+                        send(clientSocket, input, MAXLINE, 0);                     
+                        send(clientSocket, message, MAXLINE, 0);
                     }
                 }
                 if (strcmp(input, "NAME") == 0)
                 {
-
-                    send(clientSocket, input, 1024, 0);
-
+                    send(clientSocket, input, MAXLINE, 0);
                     scanf("%s", input);
                     sprintf(userName, "%s", input);
-                    send(clientSocket, input, 1024, 0);
+                    send(clientSocket, input, MAXLINE, 0);
                 }
             }
         }
@@ -248,6 +237,11 @@ int main()
             struct sockaddr *sasend, *sarecv;
             struct sockaddr_in *ipv4addr;
             sendfd = snd_udp_socket(MCAST_ADDRESS, PORT, &sasend, &salen);
+            char name[MAXLINE];
+            printf("What's your name? \n");
+            scanf("%s", name);
+            printf("Your name is: %s\n", name);
+            getchar();
             if ((recvfd = socket(sasend->sa_family, SOCK_DGRAM, 0)) < 0)
             {
                 fprintf(stderr, "socket error : %s\n", strerror(errno));
@@ -303,7 +297,7 @@ int main()
             if (fork() == 0)
                 recv_all(recvfd, salen); /* child -> receives */
 
-            send_all(sendfd, sasend, salen); /* parent -> sends */
+           send_all(sendfd, sasend, salen, name); /* parent -> sends */
         }
         printf("\nWRONG CHOICE!!!\n");
     }
